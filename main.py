@@ -41,63 +41,71 @@ csr_data = csr_matrix(user_item_matrix.values)
 user_item_matrix = user_item_matrix.rename_axis(None, axis = 1).reset_index()
 knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=20, n_jobs=-1)
 knn.fit(csr_data)
-recommendations = int(input('Количество рекомендаций: '))
-id = str(input('Введите айди: '))
-filtered_df = dataset[(dataset['user_id'] == id) & (dataset['watch_time'] != 0)]
-# Получите 'item_id' из отфильтрованных строк
-if not filtered_df.empty:
-    search_word = filtered_df.iloc[0]['item_id']
-    movie_search = user_item_matrix[user_item_matrix['item_id'].str.contains(search_word)]
-    print(movie_search)
-    # вариантов может быть несколько, для простоты всегда будем брать первый вариант
-    # через iloc[0] мы берем первую строку столбца ['movieId']
-    movie_id = movie_search.iloc[0]['item_id']
-    print(movie_id)
+new=pd.read_csv('sample_submission.csv')
+
+
+def sub (id):
+    recommendations = 10
+    filtered_df = dataset[(dataset['user_id'] == id) & (dataset['watch_time'] != 0)]
+    # Получите 'item_id' из отфильтрованных строк
+    if not filtered_df.empty:
+        search_word = filtered_df.iloc[0]['item_id']
+        movie_search = user_item_matrix[user_item_matrix['item_id'].str.contains(search_word)]
+       # print(movie_search)
+        # вариантов может быть несколько, для простоты всегда будем брать первый вариант
+        # через iloc[0] мы берем первую строку столбца ['movieId']
+        movie_id = movie_search.iloc[0]['item_id']
+        
+        
+        # далее по индексу фильма в датасете movies найдем соответствующий индекс
+        # в матрице предпочтений
+        movie_id = user_item_matrix[user_item_matrix['item_id'] == movie_id].index[0]
+        distances, indices = knn.kneighbors(csr_data[movie_id], n_neighbors = recommendations + 1)
+        
+        # уберем лишние измерения через squeeze() и преобразуем массивы в списки с помощью tolist()
+        indices_list = indices.squeeze().tolist()
+        distances_list = distances.squeeze().tolist()
+        
+        # далее с помощью функций zip и list преобразуем наши списки
+        indices_distances = zip(indices_list, distances_list)
+        
+        # в возрастающем порядке reverse = False
+        indices_distances_sorted = sorted(indices_distances, key=lambda x: x[1], reverse=False)
+        
+        # и убрать первый элемент с индексом 901 (потому что это и есть "Матрица")
+        indices_distances_sorted = indices_distances_sorted[1:]
+        
+        # создаем пустой список, в который будем помещать название фильма и расстояние до него
+        recom_list = []
+        
+        # теперь в цикле будем поочередно проходить по кортежам
+        for ind_dist in indices_distances_sorted:
+            # искать movieId в матрице предпочтений
+            matrix_movie_id = user_item_matrix.iloc[ind_dist[0]]['item_id']
+        
+            # выяснять индекс этого фильма в датафрейме movies
+            id = video_df[video_df['item_id'] == matrix_movie_id].index
+        
+            # брать название фильма и расстояние до него
+            #title = video_df.iloc[id]['video_title'].values[0]
+            title=video_df[video_df['item_id'] == matrix_movie_id].index
+            dist = ind_dist[1]
+        
+            # помещать каждую пару в питоновский словарь
+            # который, в свою очередь, станет элементом списка recom_list
+            recom_list.append(matrix_movie_id)
     
-    # далее по индексу фильма в датасете movies найдем соответствующий индекс
-    # в матрице предпочтений
-    movie_id = user_item_matrix[user_item_matrix['item_id'] == movie_id].index[0]
-    distances, indices = knn.kneighbors(csr_data[movie_id], n_neighbors = recommendations + 1)
-    
-    # уберем лишние измерения через squeeze() и преобразуем массивы в списки с помощью tolist()
-    indices_list = indices.squeeze().tolist()
-    distances_list = distances.squeeze().tolist()
-    
-    # далее с помощью функций zip и list преобразуем наши списки
-    indices_distances = list(zip(indices_list, distances_list))
-    
-    # в возрастающем порядке reverse = False
-    indices_distances_sorted = sorted(indices_distances, key=lambda x: x[1], reverse=False)
-    
-    # и убрать первый элемент с индексом 901 (потому что это и есть "Матрица")
-    indices_distances_sorted = indices_distances_sorted[1:]
-    
-    # создаем пустой список, в который будем помещать название фильма и расстояние до него
-    recom_list = []
-    
-    # теперь в цикле будем поочередно проходить по кортежам
-    for ind_dist in indices_distances_sorted:
-        # искать movieId в матрице предпочтений
-        matrix_movie_id = user_item_matrix.iloc[ind_dist[0]]['item_id']
-    
-        # выяснять индекс этого фильма в датафрейме movies
-        id = video_df[video_df['item_id'] == matrix_movie_id].index
-    
-        # брать название фильма и расстояние до него
-        #title = video_df.iloc[id]['video_title'].values[0]
-        title=video_df[video_df['item_id'] == matrix_movie_id].index
-        dist = ind_dist[1]
-    
-        # помещать каждую пару в питоновский словарь
-        # который, в свою очередь, станет элементом списка recom_list
-        recom_list.append({'Title': matrix_movie_id, 'Distance': dist})
-    
-    # индекс будем начинать с 1, как и положено рейтингу
-    recom_df = pd.DataFrame(recom_list, index = range(1, recommendations + 1))
-    print(recom_df)
-    metrics = Experiment(test, {NDCG(): K, HitRate(): K})
-    metrics.add_result("knn", recs)
-else:
-    print('Он ничего не смотрел!')
-    recom_list = data['item_id'].head(10)
-    print(recom_list)
+        return recom_list
+    else:
+        recom_list = data['item_id'].head(10)
+        return recom_list.tolist()
+finish=[]
+for index, row in new.iterrows():
+    list=sub(row['user_id'])
+    finish.append([row['user_id'],list])
+    print([row['user_id'],list])
+
+finish=pd.DataFrame(finish)
+finish.to_csv("My_submission.csv", index=False)
+
+
